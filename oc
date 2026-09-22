@@ -1,0 +1,111 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# oc — launch OpenCode inside its Linux environment (Termux + proot-distro)
+#
+# Usage:
+#   oc                OpenCode in the last used project (or ~/projects)
+#   oc my-project     OpenCode in ~/projects/my-project (created if missing)
+#   oc /some/dir      OpenCode in an explicit directory
+#   oc run "prompt"   one-off prompt, passed straight through to opencode
+#   oc shell          drop into the Linux environment itself
+#
+# Anything that is not a project directory is passed through to opencode,
+# so every opencode flag and subcommand works: oc --version, oc mini,
+# oc auth login, ...
+
+set -euo pipefail
+
+DISTRO="${OPENCODE_DISTRO:-debian}"
+PROJECTS="$HOME/projects"
+CONFIG="$HOME/.config/oc/config"
+LASTFILE="$HOME/.config/oc/last-project"
+
+# --- proot-distro launch options ---------------------------------------------
+# Newer proot-distro binds the Termux home, shared storage and the Termux
+# $PREFIX by default; older versions do not. install.sh records the right
+# choice in $CONFIG (BIND_HOME=1 adds an explicit home bind).
+PD_ARGS=(--shared-tmp)
+BIND_HOME=1
+if [ -f "$CONFIG" ]; then
+    # shellcheck disable=SC1090
+    . "$CONFIG"
+fi
+if [ "$BIND_HOME" = "1" ]; then
+    PD_ARGS+=(--bind "$HOME:$HOME")
+fi
+
+# Forward API keys set in Termux into the environment — proot-distro does not
+# carry the host environment in. (Signing in inside OpenCode via
+# `oc auth login` is the alternative and persists in the environment.)
+for v in ANTHROPIC_API_KEY OPENAI_API_KEY GEMINI_API_KEY OPENROUTER_API_KEY \
+         GROQ_API_KEY XAI_API_KEY MISTRAL_API_KEY DEEPSEEK_API_KEY; do
+    val="${!v:-}"
+    if [ -n "$val" ]; then
+        PD_ARGS+=(-e "$v=$val")
+    fi
+done
+
+# --- work out what to launch ---------------------------------------------------
+
+if [ $# -gt 0 ] && [ "$1" = "shell" ]; then
+    exec proot-distro login "$DISTRO" "${PD_ARGS[@]}" -- /bin/bash -l
+fi
+
+workdir=""
+if [ $# -gt 0 ] && [ "$1" != "run" ]; then
+    if [ -d "$PROJECTS/$1" ]; then
+        workdir="$PROJECTS/$1"
+        shift
+    elif [ -d "$1" ]; then
+        workdir="$(cd "$1" && pwd)"
+        shift
+    else
+        # Not an existing directory. A plain name (no slash, no leading dot)
+        # is offered as a new project, so `oc my-app` works on a fresh phone.
+        case "$1" in
+            */*|.*) ;;
+            *)
+                printf 'Create project %s and open it? [y/N] ' "$1"
+                answer=""
+                read -r answer || true
+                case "$answer" in
+                    [yY]*)
+                        mkdir -p "$PROJECTS/$1"
+                        workdir="$PROJECTS/$1"
+                        shift
+                        ;;
+                esac
+                ;;
+        esac
+    fi
+fi
+
+if [ -z "$workdir" ]; then
+    case "$PWD" in
+        "$HOME"|"$HOME"/*) workdir="$PWD" ;;
+    esac
+fi
+if [ -z "$workdir" ] && [ -f "$LASTFILE" ]; then
+    last="$(cat "$LASTFILE" 2>/dev/null || true)"
+    if [ -d "$last" ]; then
+        workdir="$last"
+    fi
+fi
+if [ -z "$workdir" ]; then
+    workdir="$PROJECTS"
+fi
+if [ ! -d "$workdir" ]; then
+    workdir="$PROJECTS"
+fi
+
+mkdir -p "$PROJECTS" "$(dirname "$LASTFILE")"
+printf '%s\n' "$workdir" > "$LASTFILE"
+
+# --- launch ---------------------------------------------------------------------
+# Everything is quoted so paths and prompts with spaces stay intact.
+args_q=""
+if [ $# -gt 0 ]; then
+    printf -v args_q ' %q' "$@"
+fi
+cmd="cd $(printf '%q' "$workdir") && exec opencode$args_q"
+
+exec proot-distro login "$DISTRO" "${PD_ARGS[@]}" -- /bin/bash -lc "$cmd"
