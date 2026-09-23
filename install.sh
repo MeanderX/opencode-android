@@ -87,9 +87,11 @@ ln -sf "$BIN_DIR/npx"  /usr/local/bin/npx
 rm -f /var/tmp/node.tar.xz
 
 log "Installing OpenCode..."
+npm config set prefix /usr/local
 npm install -g opencode-ai
+OPENCODE_VERSION="$(opencode --version)"
 
-log "OpenCode $(opencode --version) is installed."
+log "OpenCode $OPENCODE_VERSION is installed."
 GUEST
 
 # --- 4. Launcher + widget shortcut -------------------------------------------
