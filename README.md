@@ -84,6 +84,26 @@ To update manually: `oc shell`, then `npm update -g opencode-ai`.
   inside the Linux environment.
 - If something misbehaves, check `oc shell` → `opencode service status`.
 
+## Troubleshooting
+
+- **`exec: opencode: not found` after install:** npm's default global prefix
+  with a tarball Node install is the tarball root instead of `/usr/local`, so
+  the `opencode` launcher lands outside PATH. The installer now pins the
+  prefix. To fix an install made before that fix:
+
+  ```sh
+  oc shell
+  npm config set prefix /usr/local && npm install -g opencode-ai
+  ```
+
+  That also leaves a stray copy of OpenCode (~150 MB) under the tarball
+  root. Remove it with:
+
+  ```sh
+  rm -rf /usr/local/lib/nodejs/node-v22*/lib/node_modules/opencode-*
+  rm -f /usr/local/lib/nodejs/node-v22*/bin/opencode
+  ```
+
 ## Uninstall
 
 ```sh
