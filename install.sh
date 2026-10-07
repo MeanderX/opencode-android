@@ -88,7 +88,10 @@ rm -f /var/tmp/node.tar.xz
 
 log "Installing OpenCode..."
 npm config set prefix /usr/local
-npm install -g opencode-ai
+# OpenCode 2 lives in a new package; remove the v1 package first so the two
+# never fight over the `opencode` binary.
+npm uninstall -g opencode-ai >/dev/null 2>&1 || true
+npm install -g @opencode/cli
 OPENCODE_VERSION="$(opencode --version)"
 
 log "OpenCode $OPENCODE_VERSION is installed."
