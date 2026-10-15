@@ -16,8 +16,9 @@ set -euo pipefail
 
 DISTRO="${OPENCODE_DISTRO:-debian}"
 PROJECTS="$HOME/projects"
-CONFIG="$HOME/.config/oc/config"
-LASTFILE="$HOME/.config/oc/last-project"
+CONFIG_DIR="$HOME/.config/oc"
+CONFIG="$CONFIG_DIR/config"
+LASTFILE="$CONFIG_DIR/last-project"
 
 # --- proot-distro launch options ---------------------------------------------
 # Newer proot-distro binds the Termux home, shared storage and the Termux
@@ -32,6 +33,11 @@ fi
 if [ "$BIND_HOME" = "1" ]; then
     PD_ARGS+=(--bind "$HOME:$HOME")
 fi
+
+# The auto-update helper below runs inside the environment, where $HOME is
+# the Linux user's home and not the Termux one. Hand it the Termux config
+# directory explicitly so both sides agree on where state is kept.
+PD_ARGS+=(-e "OC_CONFIG_DIR=$CONFIG_DIR")
 
 # Forward API keys set in Termux into the environment — proot-distro does not
 # carry the host environment in. (Signing in inside OpenCode via
@@ -59,10 +65,12 @@ if [ $# -gt 0 ] && [ "$1" != "run" ]; then
         workdir="$(cd "$1" && pwd)"
         shift
     else
-        # Not an existing directory. A plain name (no slash, no leading dot)
-        # is offered as a new project, so `oc my-app` works on a fresh phone.
+        # Not an existing directory. A plain name (no slash, no leading dot,
+        # not a flag) is offered as a new project, so `oc my-app` works on a
+        # fresh phone. Anything starting with "-" is an opencode flag and is
+        # passed straight through.
         case "$1" in
-            */*|.*) ;;
+            -*|*/*|.*) ;;
             *)
                 printf 'Create project %s and open it? [y/N] ' "$1"
                 answer=""
@@ -106,6 +114,109 @@ args_q=""
 if [ $# -gt 0 ]; then
     printf -v args_q ' %q' "$@"
 fi
-cmd="cd $(printf '%q' "$workdir") && exec opencode$args_q"
+
+# Update handling runs inside the environment, in the same proot session, so
+# there is no second login to pay for. It costs nothing on most launches: the
+# daily stamp short-circuits before anything is executed.
+read -r -d '' AUTOUPDATE <<'GUEST' || true
+# OpenCode's npm postinstall hard-links the platform binary into place, and
+# proot hard-links it again into /.l2s when it runs (its --link2symlink
+# option). Any file with more than one link is therefore executed from that
+# synthetic path, so process.execPath stops pointing at the npm package,
+# OpenCode cannot find the package.json above itself, and it decides it has
+# no install method — `/update` then fails with "installation method not
+# found". Copying to a fresh inode drops the link count back to 1.
+# The stat costs nothing, so this also repairs the binary after an update,
+# including one run from inside OpenCode itself.
+oc_repair_binary() {
+    local oc_bin oc_tmp oc_real oc_nlink repaired=1
+    for oc_bin in /usr/local/lib/node_modules/@opencode/cli/bin/opencode*; do
+        [ -e "$oc_bin" ] || [ -L "$oc_bin" ] || continue
+        # Healthy means a plain file with a single link. proot replaces the
+        # path with a symlink into /.l2s once the file is multi-linked, so a
+        # symlink here means the hijack already happened. stat must follow
+        # the link (-L): stat without it reports the symlink's own count.
+        if [ ! -L "$oc_bin" ] && [ -f "$oc_bin" ]; then
+            oc_nlink="$(stat -L -c %h "$oc_bin" 2>/dev/null || echo 1)"
+            [ "$oc_nlink" = "1" ] && continue
+        fi
+        oc_real="$(readlink -f "$oc_bin" 2>/dev/null || true)"
+        if [ -z "$oc_real" ] || [ ! -f "$oc_real" ]; then
+            # Dangling pointer into /.l2s — drop it so nothing resolves there.
+            printf '\033[1;33m[oc]\033[0m Removing stale OpenCode link; reinstall needed.\n'
+            rm -f "$oc_bin"
+            repaired=0
+            continue
+        fi
+        printf '\033[1;36m[oc]\033[0m Repairing OpenCode binary link...\r'
+        oc_tmp="$oc_bin.repair.$$"
+        # Copy the real content, then clear the path before moving into it:
+        # renaming over the proot symlink fails with EPERM.
+        if cp -L "$oc_bin" "$oc_tmp" 2>/dev/null; then
+            rm -f "$oc_bin"
+            mv "$oc_tmp" "$oc_bin" 2>/dev/null || cp "$oc_tmp" "$oc_bin" 2>/dev/null
+            chmod 755 "$oc_bin" 2>/dev/null
+            rm -f "$oc_tmp"
+        else
+            rm -f "$oc_tmp"
+        fi
+        repaired=0
+        printf '\033[1;36m[oc]\033[0m OpenCode binary link repaired.\r'
+    done
+    return $repaired
+}
+
+# A service started before the repair is still running from /.l2s, and it
+# is that process which runs /update — so it has to be recycled too.
+if ! oc_repair_binary; then
+    opencode service restart >/dev/null 2>&1 || true
+fi
+
+oc_repair_binary
+
+if [ "${OC_NO_AUTOUPDATE:-}" != "1" ]; then
+    oc_state="${OC_CONFIG_DIR:-$HOME/.config/oc}"
+    oc_stamp="$oc_state/last-update-check"
+    oc_now="$(date +%s 2>/dev/null || echo 0)"
+    oc_last="$(cat "$oc_stamp" 2>/dev/null || echo 0)"
+    case "$oc_last" in ''|*[!0-9]*) oc_last=0 ;; esac
+    case "$oc_now" in ''|*[!0-9]*) oc_now=0 ;; esac
+    if [ "$oc_now" -gt 0 ] && [ $((oc_now - oc_last)) -ge "${OC_UPDATE_INTERVAL:-86400}" ]; then
+        mkdir -p "$oc_state" 2>/dev/null || true
+        # Stamp before updating so a failure retries tomorrow, not every launch.
+        printf '%s\n' "$oc_now" > "$oc_stamp" 2>/dev/null || true
+
+        oc_have="$(opencode --version 2>/dev/null | head -n1 | tr -cd '0-9.')"
+        oc_want="$(curl -fsSL --max-time "${OC_UPDATE_CHECK_TIMEOUT:-20}" \
+            'https://registry.npmjs.org/@opencode%2Fcli/latest' 2>/dev/null \
+            | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' | head -n1)"
+        [ -n "$oc_want" ] || oc_want="$(npm view @opencode/cli version 2>/dev/null | tail -n1)"
+
+        case "$oc_want" in
+            [0-9]*)
+                if [ "$oc_want" != "$oc_have" ]; then
+                    printf '\033[1;36m[oc]\033[0m Updating OpenCode %s -> %s\n' "${oc_have:-unknown}" "$oc_want"
+                    if timeout "${OC_UPDATE_TIMEOUT:-1800}" \
+                        npm install -g --force "@opencode/cli@$oc_want" >/dev/null 2>&1
+                    then
+                        # The install re-hard-links the binary, so repair it again
+                        # before launching, otherwise this launch (and /update in
+                        # it) would still see the hijacked path.
+                        oc_repair_binary
+                        printf '\033[1;32m[oc]\033[0m Updated to OpenCode %s\n' "$oc_want"
+                    else
+                        printf '\033[1;33m[oc]\033[0m Update failed — continuing with %s\n' "${oc_have:-current}"
+                    fi
+                fi
+                ;;
+            *)
+                # Offline or registry unreachable: stay quiet and carry on.
+                ;;
+        esac
+    fi
+fi
+GUEST
+
+cmd="$AUTOUPDATE"$'\n'"cd $(printf '%q' "$workdir") && exec opencode$args_q"
 
 exec proot-distro login "$DISTRO" "${PD_ARGS[@]}" -- /bin/bash -lc "$cmd"

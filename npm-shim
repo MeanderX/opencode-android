@@ -1,0 +1,153 @@
+#!/bin/bash
+# npm-shim — installed as /usr/local/bin/npm inside the Linux environment.
+#
+# Why this exists:
+#   OpenCode works out how it was installed by running
+#       npm list -g --depth=0 <package>
+#   and gives that subprocess a hard 10 second deadline. Under
+#   proot-distro on Android the real npm needs roughly 8 seconds just to
+#   start and walk the global tree, so the probe times out and both
+#   `/update` and `opencode upgrade` fail with
+#       "Could not detect the installation method"
+#   even though OpenCode is installed perfectly correctly.
+#
+# `npm list -g` only reads package.json files, so we can answer it
+# straight from disk in milliseconds. Every other npm invocation is
+# passed through untouched to the real npm.
+#
+# Maintenance: installed by install.sh. Override the global prefix with
+# OC_NPM_GLOBAL_ROOT if npm is not installed under /usr/local.
+
+set -uo pipefail
+
+GLOBAL_ROOT="${OC_NPM_GLOBAL_ROOT:-/usr/local}"
+GLOBAL_MODULES="$GLOBAL_ROOT/lib/node_modules"
+
+find_real_npm() {
+    local c
+    for c in /usr/local/lib/nodejs/node-v*/bin/npm \
+             "$GLOBAL_ROOT"/bin/npm.real; do
+        if [ -x "$c" ]; then
+            printf '%s' "$c"
+            return 0
+        fi
+    done
+    return 1
+}
+
+# Print "name@version" for one installed global package directory.
+describe_pkg() {
+    local dir="$1" name="$2" version=""
+    if [ -f "$dir/package.json" ]; then
+        # Only a top-level "version" key. npm indents top-level keys by
+        # exactly two spaces, so requiring that excludes nested objects.
+        version="$(sed -n \
+            's/^\(  \)\?"version":[[:space:]]*"\([^"]*\)".*/\2/p' \
+            "$dir/package.json" 2>/dev/null | head -n1)"
+    fi
+    if [ -n "$version" ]; then
+        printf '%s@%s' "$name" "$version"
+    else
+        printf '%s' "$name"
+    fi
+}
+
+# All globally installed package names, scopes expanded one level deep.
+all_global_pkgs() {
+    local e s base
+    for e in "$GLOBAL_MODULES"/*; do
+        [ -d "$e" ] || continue
+        base="$(basename "$e")"
+        case "$base" in
+            .*)  continue ;;
+            @*)
+                for s in "$e"/*; do
+                    [ -d "$s" ] || continue
+                    printf '%s/%s\n' "$base" "$(basename "$s")"
+                done
+                ;;
+            *) printf '%s\n' "$base" ;;
+        esac
+    done
+}
+
+# True when the arguments describe a global list, i.e. what OpenCode probes
+# with. Leaves "$@" untouched so the caller can still fall through.
+# Flags that change the output format are delegated to the real npm rather
+# than answered here, so `npm list -g --json` keeps working.
+wants_global_list() {
+    [ "${1-}" = "list" ] || [ "${1-}" = "ls" ] || return 1
+    shift
+    local a global=0
+    for a in "$@"; do
+        case "$a" in
+            -g|--global|--location=global) global=1 ;;
+            --json|--long|--parseable|--all|--flat) return 1 ;;
+        esac
+    done
+    [ "$global" = 1 ]
+}
+
+fast_list() {
+    local names=() wanted=() a prev="" line count=0 total=0 last=""
+
+    # Pull out the package filters and swallow npm's own flags.
+    for a in "$@"; do
+        case "$prev" in
+            --depth)
+                prev="$a"
+                continue
+                ;;
+        esac
+        case "$a" in
+            --depth) prev="--depth" ;;
+            --depth=*|--omit=*|--include=*|--flat) ;;
+            -*) ;;
+            *) names+=("$a") ;;
+        esac
+    done
+
+    if [ "${#names[@]}" -gt 0 ]; then
+        for a in "${names[@]}"; do
+            if [ -d "$GLOBAL_MODULES/$a" ]; then
+                wanted+=("$a")
+            fi
+        done
+    else
+        while IFS= read -r line; do
+            [ -n "$line" ] && wanted+=("$line")
+        done < <(all_global_pkgs)
+    fi
+
+    printf '%s\n' "$GLOBAL_ROOT/lib"
+
+    total="${#wanted[@]}"
+    for a in "${wanted[@]}"; do
+        count=$((count + 1))
+        if [ "$count" -lt "$total" ]; then
+            last="+--"
+        else
+            last="\`--"
+        fi
+        printf '%s %s\n' "$last" "$(describe_pkg "$GLOBAL_MODULES/$a" "$a")"
+    done
+
+    if [ "$total" -eq 0 ]; then
+        printf '(empty)\n'
+        return 1
+    fi
+    return 0
+}
+
+if wants_global_list "$@" && [ -d "$GLOBAL_MODULES" ]; then
+    shift
+    fast_list "$@"
+    exit $?
+fi
+
+REAL_NPM="$(find_real_npm)" || {
+    echo "npm-shim: no real npm found (looked in /usr/local/lib/nodejs)." >&2
+    exit 127
+}
+
+exec "$REAL_NPM" "$@"

@@ -52,7 +52,16 @@ fi
 # --- 3. Node.js + OpenCode inside the environment ----------------------------
 
 log "Installing Node.js and OpenCode inside the environment..."
-proot-distro login "$DISTRO" --shared-tmp -- /bin/bash -s <<'GUEST'
+# The npm shim is shipped as a repo file, but the work below happens inside
+# the Linux environment. Pass it across as base64 on the environment rather
+# than relying on the phone's directory layout being visible from inside.
+if [ -f "$SCRIPT_DIR/npm-shim" ]; then
+    NPM_SHIM_B64="$(base64 -w0 "$SCRIPT_DIR/npm-shim")"
+else
+    NPM_SHIM_B64=""
+    warn "npm-shim not found next to install.sh — /update may report 'installation method not found'."
+fi
+proot-distro login "$DISTRO" --shared-tmp -e "NPM_SHIM_B64=$NPM_SHIM_B64" -- /bin/bash -s <<'GUEST'
 set -euo pipefail
 
 log() { printf '\033[1;36m[oc-install]\033[0m %s\n' "$*"; }
@@ -82,9 +91,23 @@ mkdir -p /usr/local/lib/nodejs
 tar -xJf /var/tmp/node.tar.xz -C /usr/local/lib/nodejs
 BIN_DIR="/usr/local/lib/nodejs/${ASSET%.tar.xz}/bin"
 ln -sf "$BIN_DIR/node" /usr/local/bin/node
-ln -sf "$BIN_DIR/npm"  /usr/local/bin/npm
 ln -sf "$BIN_DIR/npx"  /usr/local/bin/npx
 rm -f /var/tmp/node.tar.xz
+
+# Install the npm shim *instead of* symlinking npm directly.
+# OpenCode detects its install method by running `npm list -g` under a hard
+# 10 second deadline, which the real npm cannot meet under proot. The shim
+# answers that one query from disk and forwards everything else to the npm
+# installed by the tarball above.
+if [ -n "${NPM_SHIM_B64:-}" ]; then
+    log "Installing the npm shim..."
+    rm -f /usr/local/bin/npm
+    printf '%s' "$NPM_SHIM_B64" | base64 -d > /usr/local/bin/npm
+    chmod 755 /usr/local/bin/npm
+    ln -sf "$BIN_DIR/npm" /usr/local/bin/npm.real
+else
+    ln -sf "$BIN_DIR/npm" /usr/local/bin/npm
+fi
 
 log "Installing OpenCode..."
 npm config set prefix /usr/local
@@ -92,6 +115,37 @@ npm config set prefix /usr/local
 # never fight over the `opencode` binary.
 npm uninstall -g opencode-ai >/dev/null 2>&1 || true
 npm install -g @opencode/cli
+
+# Put execution back on the real path.
+#
+# OpenCode's postinstall hard-links the platform binary into place, leaving
+# st_nlink = 2. proot runs any multi-linked file from a synthetic /.l2s/...
+# path (its --link2symlink option) and replaces the real path with a symlink
+# to it. process.execPath then stops pointing at the npm package, OpenCode
+# cannot find the package.json above itself, decides it has no install
+# method, and `/update` fails with "installation method not found". Copying
+# the content into a plain file undoes that.
+log "Fixing the binary's hard link for proot..."
+for ocbin in /usr/local/lib/node_modules/@opencode/cli/bin/opencode*; do
+    [ -e "$ocbin" ] || [ -L "$ocbin" ] || continue
+    # stat must follow the link (-L): without it a proot symlink reports 1
+    # and would be skipped, which is exactly the case we need to repair.
+    if [ ! -L "$ocbin" ] && [ -f "$ocbin" ]; then
+        [ "$(stat -L -c %h "$ocbin" 2>/dev/null || echo 1)" = "1" ] && continue
+    fi
+    octmp="$ocbin.repair.$$"
+    # Clear the path before moving into it: renaming over the proot symlink
+    # fails with EPERM.
+    if cp -L "$ocbin" "$octmp" 2>/dev/null; then
+        rm -f "$ocbin"
+        mv "$octmp" "$ocbin" 2>/dev/null || cp "$octmp" "$ocbin" 2>/dev/null
+        chmod 755 "$ocbin" 2>/dev/null
+        rm -f "$octmp"
+    else
+        rm -f "$octmp"
+    fi
+done
+
 OPENCODE_VERSION="$(opencode --version)"
 
 log "OpenCode $OPENCODE_VERSION is installed."

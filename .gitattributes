@@ -1,3 +1,4 @@
 # Shell scripts must keep LF endings — CRLF breaks them in Termux.
 *.sh text eol=lf
 oc text eol=lf
+npm-shim text eol=lf

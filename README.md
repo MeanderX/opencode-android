@@ -32,8 +32,8 @@ bash install.sh
 
 **Option B — copy the files manually:**
 
-1. Get these three files onto the phone, e.g. into `Download/`:
-   `install.sh`, `oc`, `OpenCode.sh` (USB or cloud drive).
+1. Get these four files onto the phone, e.g. into `Download/`:
+   `install.sh`, `oc`, `OpenCode.sh`, `npm-shim` (USB or cloud drive).
 2. Open Termux and run:
 
    ```sh
@@ -73,8 +73,50 @@ Tapping it opens OpenCode directly.
 
 ## Updating
 
-Re-run `bash install.sh` — it is idempotent and refreshes OpenCode.
-To update manually: `oc shell`, then `npm update -g opencode-ai`.
+**Automatic.** Both launchers — `oc` and the home-screen widget — check the
+npm registry at most once every 24 hours and install a newer OpenCode if
+there is one. Most launches do nothing at all; when a check does run it
+prints what it is doing. No check happens when you are offline.
+
+Turn it off with an environment variable:
+
+```sh
+OC_NO_AUTOUPDATE=1 oc
+```
+
+**Manual.** Inside OpenCode, run `/update`. From the shell:
+
+```sh
+oc                       # picks up any pending update on launch
+oc shell                 # then: npm install -g @opencode/cli@latest
+```
+
+Re-running `bash install.sh` is also safe at any time — it is idempotent and
+refreshes everything.
+
+### Why this needed extra work on proot
+
+OpenCode decides how it was installed by looking for a `package.json` two
+directories above its own executable, then confirming the npm package is
+globally installed. Two things on Android get in the way, and this repo
+handles both:
+
+1. **proot's `--link2symlink`.** OpenCode's npm `postinstall` *hard-links*
+   the platform binary into place, leaving `st_nlink = 2`. proot runs any
+   multi-linked file from a synthetic `/.l2s/...` path instead of its real
+   one, and replaces the real path with a symlink to it. OpenCode's
+   `process.execPath` then stops pointing at the npm package, the
+   `package.json` lookup fails, and it reports
+   `installation method not found`. The launchers copy the binary back into
+   a plain file before every launch, which also repairs it after any
+   update — including one you run from inside OpenCode itself. Note that
+   `stat` must be given `-L` to see through the symlink; without it a
+   hijacked binary looks perfectly healthy.
+2. **A slow `npm list -g`.** The detection step shells out to npm with a
+   short deadline, and under proot real npm needs ~8 seconds just to start,
+   so the probe can time out. `npm-shim` answers that one query straight
+   from disk in milliseconds and forwards everything else to the real npm.
+
 
 ## Tips
 
@@ -86,6 +128,24 @@ To update manually: `oc shell`, then `npm update -g opencode-ai`.
 
 ## Troubleshooting
 
+- **`/update` says "Could not detect the installation method":** the binary
+  is hard-linked again, which usually means it was reinstalled without going
+  through these launchers. Confirm and repair:
+
+  ```sh
+  oc shell
+  stat -c %h /usr/local/lib/node_modules/@opencode/cli/bin/opencode.exe
+  # 1 is correct; 2 or more means proot will hijack the path
+  ```
+
+  Simply launching `oc` once fixes it. To do it by hand:
+
+  ```sh
+  oc shell
+  b=/usr/local/lib/node_modules/@opencode/cli/bin/opencode.exe
+  cp -L "$b" "$b.repair" && rm -f "$b" && mv "$b.repair" "$b" && chmod 755 "$b"
+  ```
+
 - **`exec: opencode: not found` after install:** npm's default global prefix
   with a tarball Node install is the tarball root instead of `/usr/local`, so
   the `opencode` launcher lands outside PATH. The installer now pins the
@@ -93,7 +153,7 @@ To update manually: `oc shell`, then `npm update -g opencode-ai`.
 
   ```sh
   oc shell
-  npm config set prefix /usr/local && npm install -g opencode-ai
+  npm config set prefix /usr/local && npm install -g @opencode/cli
   ```
 
   That also leaves a stray copy of OpenCode (~150 MB) under the tarball
