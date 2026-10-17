@@ -78,6 +78,10 @@ npm registry at most once every 24 hours and install a newer OpenCode if
 there is one. Most launches do nothing at all; when a check does run it
 prints what it is doing. No check happens when you are offline.
 
+Updates are applied safely: the new build is installed into a throwaway
+prefix, verified to actually run, and only then swapped in, so a bad release
+leaves the working install untouched.
+
 Turn it off with an environment variable:
 
 ```sh
@@ -88,7 +92,7 @@ OC_NO_AUTOUPDATE=1 oc
 
 ```sh
 oc                       # picks up any pending update on launch
-oc shell                 # then: npm install -g @opencode/cli@latest
+oc shell                 # then: npm install -g @opencode-ai/cli@latest
 ```
 
 Re-running `bash install.sh` is also safe at any time — it is idempotent and
@@ -124,7 +128,7 @@ handles both:
   Termux — the keyboard comes back.
 - Projects live in `~/projects` (Termux) and are visible at the same path
   inside the Linux environment.
-- If something misbehaves, check `oc shell` → `opencode service status`.
+- If something misbehaves, check `oc shell` → `opencode2 service status`.
 
 ## Troubleshooting
 
@@ -134,7 +138,7 @@ handles both:
 
   ```sh
   oc shell
-  stat -c %h /usr/local/lib/node_modules/@opencode/cli/bin/opencode.exe
+  stat -c %h /usr/local/lib/node_modules/@opencode-ai/cli/bin/opencode2.exe
   # 1 is correct; 2 or more means proot will hijack the path
   ```
 
@@ -142,26 +146,27 @@ handles both:
 
   ```sh
   oc shell
-  b=/usr/local/lib/node_modules/@opencode/cli/bin/opencode.exe
+  b=/usr/local/lib/node_modules/@opencode-ai/cli/bin/opencode2.exe
   cp -L "$b" "$b.repair" && rm -f "$b" && mv "$b.repair" "$b" && chmod 755 "$b"
   ```
 
-- **`exec: opencode: not found` after install:** npm's default global prefix
+- **`exec: opencode2: not found` after install:** npm's default global prefix
   with a tarball Node install is the tarball root instead of `/usr/local`, so
-  the `opencode` launcher lands outside PATH. The installer now pins the
+  the `opencode2` launcher lands outside PATH. The installer now pins the
   prefix. To fix an install made before that fix:
 
   ```sh
   oc shell
-  npm config set prefix /usr/local && npm install -g @opencode/cli
+  npm config set prefix /usr/local && npm install -g @opencode-ai/cli
   ```
 
   That also leaves a stray copy of OpenCode (~150 MB) under the tarball
   root. Remove it with:
 
   ```sh
-  rm -rf /usr/local/lib/nodejs/node-v22*/lib/node_modules/opencode-*
-  rm -f /usr/local/lib/nodejs/node-v22*/bin/opencode
+  rm -rf /usr/local/lib/nodejs/node-v22*/lib/node_modules/opencode-* \
+         /usr/local/lib/nodejs/node-v22*/lib/node_modules/@opencode-ai
+  rm -f /usr/local/lib/nodejs/node-v22*/bin/opencode2
   ```
 
 ## Uninstall

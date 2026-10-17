@@ -111,10 +111,12 @@ fi
 
 log "Installing OpenCode..."
 npm config set prefix /usr/local
-# OpenCode 2 lives in a new package; remove the v1 package first so the two
-# never fight over the `opencode` binary.
-npm uninstall -g opencode-ai >/dev/null 2>&1 || true
-npm install -g @opencode/cli
+# OpenCode V2 here is the @opencode-ai/cli beta package, launched as
+# `opencode2`. Drop the old v1 package and @opencode/cli (whose postinstall
+# does not run under proot and leaves only a "postinstall was not run" stub)
+# so nothing else claims the `opencode` name.
+npm uninstall -g opencode-ai @opencode/cli >/dev/null 2>&1 || true
+npm install -g @opencode-ai/cli
 
 # Put execution back on the real path.
 #
@@ -126,7 +128,7 @@ npm install -g @opencode/cli
 # method, and `/update` fails with "installation method not found". Copying
 # the content into a plain file undoes that.
 log "Fixing the binary's hard link for proot..."
-for ocbin in /usr/local/lib/node_modules/@opencode/cli/bin/opencode*; do
+for ocbin in /usr/local/lib/node_modules/@opencode-ai/cli/bin/opencode2*; do
     [ -e "$ocbin" ] || [ -L "$ocbin" ] || continue
     # stat must follow the link (-L): without it a proot symlink reports 1
     # and would be skipped, which is exactly the case we need to repair.
@@ -146,7 +148,7 @@ for ocbin in /usr/local/lib/node_modules/@opencode/cli/bin/opencode*; do
     fi
 done
 
-OPENCODE_VERSION="$(opencode --version)"
+OPENCODE_VERSION="$(opencode2 --version)"
 
 log "OpenCode $OPENCODE_VERSION is installed."
 GUEST
