@@ -92,11 +92,25 @@ OC_NO_AUTOUPDATE=1 oc
 
 ```sh
 oc                       # picks up any pending update on launch
-oc shell                 # then: npm install -g @opencode-ai/cli@latest
+oc shell                 # then: npm install -g @opencode/cli@latest
 ```
 
 Re-running `bash install.sh` is also safe at any time — it is idempotent and
-refreshes everything.
+refreshes everything. It skips the npm install entirely when the installed
+version already matches the registry's latest, so a repeat run is quick and
+does not disturb a working binary.
+
+**Standalone helper.** `opencode.sh` is a self-contained update-and-start
+script for an existing install. It pins the npm prefix, skips the install
+when already current, repairs the proot hard link, and then launches OpenCode:
+
+```sh
+bash opencode.sh            # update if needed, then start
+bash opencode.sh --version  # arguments are passed through to opencode
+```
+
+It is useful for repairing an installation without re-running the full
+installer. It does not run `install.sh`'s Termux package or Node.js setup.
 
 ### Why this needed extra work on proot
 
@@ -138,7 +152,7 @@ handles both:
 
   ```sh
   oc shell
-  stat -c %h /usr/local/lib/node_modules/@opencode-ai/cli/bin/opencode2.exe
+  stat -c %h /usr/local/lib/node_modules/@opencode/cli/bin/opencode.exe
   # 1 is correct; 2 or more means proot will hijack the path
   ```
 
@@ -146,7 +160,7 @@ handles both:
 
   ```sh
   oc shell
-  b=/usr/local/lib/node_modules/@opencode-ai/cli/bin/opencode2.exe
+  b=/usr/local/lib/node_modules/@opencode/cli/bin/opencode.exe
   cp -L "$b" "$b.repair" && rm -f "$b" && mv "$b.repair" "$b" && chmod 755 "$b"
   ```
 
@@ -157,7 +171,7 @@ handles both:
 
   ```sh
   oc shell
-  npm config set prefix /usr/local && npm install -g @opencode-ai/cli
+  npm config set prefix /usr/local && npm install -g @opencode/cli
   ```
 
   That also leaves a stray copy of OpenCode (~150 MB) under the tarball
@@ -165,8 +179,9 @@ handles both:
 
   ```sh
   rm -rf /usr/local/lib/nodejs/node-v22*/lib/node_modules/opencode-* \
-         /usr/local/lib/nodejs/node-v22*/lib/node_modules/@opencode-ai
-  rm -f /usr/local/lib/nodejs/node-v22*/bin/opencode2
+         /usr/local/lib/nodejs/node-v22*/lib/node_modules/@opencode-ai \
+         /usr/local/lib/nodejs/node-v22*/lib/node_modules/@opencode
+  rm -f /usr/local/lib/nodejs/node-v22*/bin/opencode{,2}
   ```
 
 ## Uninstall

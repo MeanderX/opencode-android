@@ -130,7 +130,7 @@ read -r -d '' AUTOUPDATE <<'GUEST' || true
 # including one run from inside OpenCode itself.
 oc_repair_binary() {
     local oc_bin oc_tmp oc_real oc_nlink repaired=1
-    for oc_bin in /usr/local/lib/node_modules/@opencode-ai/cli/bin/opencode2*; do
+    for oc_bin in /usr/local/lib/node_modules/@opencode/cli/bin/opencode*; do
         [ -e "$oc_bin" ] || [ -L "$oc_bin" ] || continue
         # Healthy means a plain file with a single link. proot replaces the
         # path with a symlink into /.l2s once the file is multi-linked, so a
@@ -185,24 +185,27 @@ oc_staged_update() {
 
     if ! timeout "${OC_UPDATE_TIMEOUT:-1800}" \
         npm install --prefix "$stage" --force --no-save --no-package-lock \
-        "@opencode-ai/cli@$want" >/dev/null 2>&1
+        "@opencode/cli@$want" >/dev/null 2>&1
     then
         rm -rf "$stage" 2>/dev/null || true
         return 1
     fi
-    if [ ! -e "$stage/node_modules/@opencode-ai/cli" ] && [ ! -L "$stage/node_modules/@opencode-ai/cli" ]; then
+    if [ ! -e "$stage/node_modules/@opencode/cli" ] && [ ! -L "$stage/node_modules/@opencode/cli" ]; then
         rm -rf "$stage" 2>/dev/null || true
         return 1
     fi
 
-    staged="$stage/node_modules/@opencode-ai/cli/bin/opencode2.exe"
+    staged="$stage/node_modules/@opencode/cli/bin/opencode.exe"
     if [ ! -e "$staged" ] && [ ! -L "$staged" ]; then
         rm -rf "$stage" 2>/dev/null || true
         return 1
     fi
 
     # Gate the swap on the new binary actually working.
-    got="$(timeout 60 "$staged" --version 2>/dev/null | head -n1 | sed 's/^v//')"
+    # The binary prints "opencode v2.1.0"; older builds print "1.19.3".
+    # Take the last whitespace-separated token so both parse to a bare version.
+    got="$(timeout 60 "$staged" --version 2>/dev/null | head -n1 \
+        | tr ' ' '\n' | tail -n1 | sed 's/^v//')"
     if [ "$got" != "$want" ]; then
         rm -rf "$stage" 2>/dev/null || true
         return 1
@@ -211,18 +214,18 @@ oc_staged_update() {
     # Verified. Swap it in: build a fresh single-link file, then atomically
     # rename it over the live binary. (Renaming over a proot /.l2s symlink
     # fails with EPERM, so clear the path first.)
-    live="/usr/local/lib/node_modules/@opencode-ai/cli"
-    tmp="$live/bin/opencode2.exe.stage.$$"
+    live="/usr/local/lib/node_modules/@opencode/cli"
+    tmp="$live/bin/opencode.exe.stage.$$"
     if ! cp -L "$staged" "$tmp" 2>/dev/null; then
         rm -rf "$stage" "$tmp" 2>/dev/null || true
         return 1
     fi
     chmod 755 "$tmp" 2>/dev/null || true
-    rm -f "$live/bin/opencode2.exe" 2>/dev/null || true
-    mv "$tmp" "$live/bin/opencode2.exe" 2>/dev/null \
-        || cp "$tmp" "$live/bin/opencode2.exe" 2>/dev/null
+    rm -f "$live/bin/opencode.exe" 2>/dev/null || true
+    mv "$tmp" "$live/bin/opencode.exe" 2>/dev/null \
+        || cp "$tmp" "$live/bin/opencode.exe" 2>/dev/null
     # Keep `npm list -g` (install-method detection) reporting the new version.
-    cp "$stage/node_modules/@opencode-ai/cli/package.json" "$live/package.json" 2>/dev/null || true
+    cp "$stage/node_modules/@opencode/cli/package.json" "$live/package.json" 2>/dev/null || true
 
     rm -rf "$stage" 2>/dev/null || true
 
@@ -245,11 +248,12 @@ if [ "${OC_NO_AUTOUPDATE:-}" != "1" ]; then
         # Stamp before updating so a failure retries tomorrow, not every launch.
         printf '%s\n' "$oc_now" > "$oc_stamp" 2>/dev/null || true
 
-        oc_have="$(opencode2 --version 2>/dev/null | head -n1 | sed 's/^v//')"
+        oc_have="$(opencode2 --version 2>/dev/null | head -n1 \
+            | tr ' ' '\n' | tail -n1 | sed 's/^v//')"
         oc_want="$(curl -fsSL --max-time "${OC_UPDATE_CHECK_TIMEOUT:-20}" \
-            'https://registry.npmjs.org/@opencode-ai%2Fcli/latest' 2>/dev/null \
+            'https://registry.npmjs.org/@opencode%2Fcli/latest' 2>/dev/null \
             | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' | head -n1)"
-        [ -n "$oc_want" ] || oc_want="$(npm view @opencode-ai/cli version 2>/dev/null | tail -n1)"
+        [ -n "$oc_want" ] || oc_want="$(npm view @opencode/cli version 2>/dev/null | tail -n1)"
 
         case "$oc_want" in
             [0-9]*)

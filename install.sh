@@ -111,12 +111,27 @@ fi
 
 log "Installing OpenCode..."
 npm config set prefix /usr/local
-# OpenCode V2 here is the @opencode-ai/cli beta package, launched as
-# `opencode2`. Drop the old v1 package and @opencode/cli (whose postinstall
-# does not run under proot and leaves only a "postinstall was not run" stub)
-# so nothing else claims the `opencode` name.
-npm uninstall -g opencode-ai @opencode/cli >/dev/null 2>&1 || true
-npm install -g @opencode-ai/cli
+# OpenCode V2 is published as @opencode/cli (v1 was opencode-ai; the
+# similarly named @opencode-ai/cli is the older beta line). Drop the other
+# names so nothing competes for the `opencode` bin.
+npm uninstall -g opencode-ai @opencode-ai/cli >/dev/null 2>&1 || true
+
+# Re-installing the same version is not a no-op for npm: it re-runs the
+# postinstall (recreating the hard link proot chokes on) and takes minutes.
+# Skip it when the installed version already matches the registry's latest.
+OC_LATEST="$(curl -fsSL --max-time 20 https://registry.npmjs.org/@opencode%2Fcli/latest 2>/dev/null \
+    | sed -n 's/.*"version":"\([^"]*\)".*/\1/p' | head -n1 || true)"
+OC_HAVE="$(sed -n 's/^[[:space:]]*"version":[[:space:]]*"\([^"]*\)".*/\1/p' \
+    /usr/local/lib/node_modules/@opencode/cli/package.json 2>/dev/null | head -n1 || true)"
+if [ -n "$OC_LATEST" ] && [ "$OC_HAVE" = "$OC_LATEST" ] \
+    && [ -e /usr/local/lib/node_modules/@opencode/cli/bin/opencode.exe ]; then
+    log "OpenCode $OC_HAVE is already the latest version — skipping install."
+else
+    # A half-finished upgrade leaves @opencode/.cli-XXXX behind, and npm
+    # reuses that deterministic name, so the next install fails ENOTEMPTY.
+    rm -rf /usr/local/lib/node_modules/@opencode/.cli-* 2>/dev/null || true
+    npm install -g "@opencode/cli@${OC_LATEST:-latest}"
+fi
 
 # Put execution back on the real path.
 #
@@ -128,7 +143,7 @@ npm install -g @opencode-ai/cli
 # method, and `/update` fails with "installation method not found". Copying
 # the content into a plain file undoes that.
 log "Fixing the binary's hard link for proot..."
-for ocbin in /usr/local/lib/node_modules/@opencode-ai/cli/bin/opencode2*; do
+for ocbin in /usr/local/lib/node_modules/@opencode/cli/bin/opencode*; do
     [ -e "$ocbin" ] || [ -L "$ocbin" ] || continue
     # stat must follow the link (-L): without it a proot symlink reports 1
     # and would be skipped, which is exactly the case we need to repair.
@@ -148,7 +163,7 @@ for ocbin in /usr/local/lib/node_modules/@opencode-ai/cli/bin/opencode2*; do
     fi
 done
 
-OPENCODE_VERSION="$(opencode2 --version)"
+OPENCODE_VERSION="$(opencode2 --version | head -n1 | tr ' ' '\n' | tail -n1)"
 
 log "OpenCode $OPENCODE_VERSION is installed."
 GUEST
