@@ -33,7 +33,16 @@ normally, kept current with upstream releases.
 
 ## Install
 
-**Option A — clone from GitHub (recommended):**
+**Option A — one line (recommended):**
+
+```sh
+pkg install -y curl && curl -fsSL https://raw.githubusercontent.com/MeanderX/opencode-android/main/get.sh | bash
+```
+
+`get.sh` clones the project to `~/opencode-android` (or updates it if it is
+already there), then runs `install.sh`.
+
+**Option B — clone manually:**
 
 ```sh
 pkg install git
@@ -42,7 +51,7 @@ cd opencode-android
 bash install.sh
 ```
 
-**Option B — copy the files manually:**
+**Option C — copy the files manually:**
 
 1. Get these four files onto the phone, e.g. into `Download/`:
    `install.sh`, `oc`, `OpenCode.sh`, `npm-shim` (USB or cloud drive).

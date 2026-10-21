@@ -114,7 +114,7 @@
       <div style="min-width:0; flex:1">
         <h2>Copy the installer</h2>
         <p>Open Termux, paste this, press enter. It downloads the project and runs the setup.</p>
-        <pre id="cmd">pkg install -y git &amp;&amp; git clone --depth 1 https://github.com/MeanderX/opencode-android ~/opencode-android &amp;&amp; bash ~/opencode-android/install.sh</pre>
+        <pre id="cmd">pkg install -y curl &amp;&amp; curl -fsSL https://raw.githubusercontent.com/MeanderX/opencode-android/main/get.sh | bash</pre>
         <div class="actions">
           <button class="btn primary" id="copy" type="button">Copy command</button>
           <a class="btn" href="intent://#Intent;package=com.termux;end">Open Termux</a>
