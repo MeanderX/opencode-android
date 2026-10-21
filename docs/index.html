@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>OpenCode on Android — install</title>
+<meta name="theme-color" content="#0b0d10">
+<meta name="description" content="Install OpenCode 2 on Android with Termux and Debian. Two steps, one paste.">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>⌨️</text></svg>">
+<style>
+  :root {
+    color-scheme: dark;
+    --bg: #0b0d10;
+    --panel: #12161c;
+    --panel-2: #171c24;
+    --line: #242c37;
+    --text: #e8edf3;
+    --muted: #93a0b1;
+    --accent: #ffb454;
+    --accent-ink: #1a1205;
+    --green: #7ee787;
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background:
+      radial-gradient(900px 500px at 50% -180px, #1b2430 0%, transparent 70%),
+      var(--bg);
+    color: var(--text);
+    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    padding: max(24px, env(safe-area-inset-top)) 18px max(32px, env(safe-area-inset-bottom));
+  }
+  main { max-width: 620px; margin: 0 auto; }
+  .eyebrow {
+    display: inline-block; margin: 0 0 14px;
+    padding: 5px 10px; border: 1px solid var(--line); border-radius: 999px;
+    color: var(--muted); font-size: 12px; letter-spacing: .08em; text-transform: uppercase;
+  }
+  h1 { font-size: clamp(30px, 8vw, 42px); line-height: 1.1; margin: 0 0 12px; letter-spacing: -0.02em; }
+  h1 span { color: var(--accent); }
+  .lede { color: var(--muted); font-size: 17px; margin: 0 0 28px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 16px;
+    padding: 18px; margin: 0 0 14px;
+  }
+  .step { display: flex; gap: 14px; align-items: flex-start; }
+  .num {
+    flex: 0 0 28px; height: 28px; border-radius: 50%;
+    display: grid; place-items: center;
+    background: var(--panel-2); border: 1px solid var(--line);
+    color: var(--accent); font-weight: 700; font-size: 14px;
+  }
+  .step h2 { font-size: 16px; margin: 3px 0 4px; }
+  .step p { margin: 0; color: var(--muted); font-size: 14px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; }
+  a.btn, button.btn {
+    appearance: none; border: 1px solid var(--line); border-radius: 11px;
+    padding: 11px 15px; font: inherit; font-weight: 600; font-size: 15px;
+    color: var(--text); background: var(--panel-2); text-decoration: none;
+    cursor: pointer; -webkit-tap-highlight-color: transparent;
+  }
+  a.btn.primary, button.btn.primary {
+    background: var(--accent); color: var(--accent-ink); border-color: var(--accent);
+  }
+  a.btn:active, button.btn:active { transform: translateY(1px); }
+  pre {
+    margin: 14px 0 0; padding: 13px 14px; overflow-x: auto;
+    background: #0a0c0f; border: 1px solid var(--line); border-radius: 11px;
+    font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    color: #d7e0ea; -webkit-overflow-scrolling: touch;
+  }
+  .hint { font-size: 13px; color: var(--muted); margin: 10px 0 0; }
+  .hint code { color: var(--text); }
+  .ok { color: var(--green); }
+  .qr { display: flex; gap: 18px; align-items: center; flex-wrap: wrap; }
+  .qr img { width: 168px; height: 168px; border-radius: 10px; background: #fff; padding: 8px; }
+  .qr p { margin: 0; color: var(--muted); font-size: 14px; max-width: 300px; }
+  footer { margin-top: 26px; color: #6f7c8c; font-size: 12.5px; text-align: center; }
+  footer a { color: var(--muted); }
+  .toast {
+    position: fixed; left: 50%; bottom: max(22px, env(safe-area-inset-bottom));
+    transform: translate(-50%, 20px); opacity: 0; pointer-events: none;
+    background: var(--green); color: #06210c; font-weight: 700; font-size: 14px;
+    padding: 10px 16px; border-radius: 999px; transition: .18s ease;
+  }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+  @media (prefers-reduced-motion: reduce) { .toast { transition: none; } }
+</style>
+</head>
+<body>
+<main>
+  <p class="eyebrow">Android · Termux · Debian</p>
+  <h1>OpenCode <span>on Android</span></h1>
+  <p class="lede">The full OpenCode 2 agent, running on the phone in your pocket. No root, no computer, no cloud container. Two steps and one paste.</p>
+
+  <section class="card">
+    <div class="step">
+      <div class="num">1</div>
+      <div>
+        <h2>Install Termux</h2>
+        <p>Use F-Droid or the GitHub release. The Play Store build is outdated and does not work.</p>
+        <div class="actions">
+          <a class="btn primary" href="https://f-droid.org/packages/com.termux/" rel="noopener">Get Termux (F-Droid)</a>
+          <a class="btn" href="https://github.com/termux/termux-app/releases/latest" rel="noopener">GitHub release</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="step">
+      <div class="num">2</div>
+      <div style="min-width:0; flex:1">
+        <h2>Copy the installer</h2>
+        <p>Open Termux, paste this, press enter. It downloads the project and runs the setup.</p>
+        <pre id="cmd">pkg install -y git &amp;&amp; git clone --depth 1 https://github.com/MeanderX/opencode-android ~/opencode-android &amp;&amp; bash ~/opencode-android/install.sh</pre>
+        <div class="actions">
+          <button class="btn primary" id="copy" type="button">Copy command</button>
+          <a class="btn" href="intent://#Intent;package=com.termux;end">Open Termux</a>
+        </div>
+        <p class="hint">First run downloads a few hundred MB and takes 5–15 minutes. Approve the storage dialog if it appears.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="card">
+    <div class="step">
+      <div class="num">3</div>
+      <div>
+        <h2>Start coding</h2>
+        <p>Type <code>oc</code> in Termux. Sign in to a model provider on first launch. Optional: install <a href="https://f-droid.org/packages/com.termux.widget/" style="color:var(--text)">Termux:Widget</a> to put OpenCode on your home screen.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="card qr">
+    <img src="qr.png" alt="QR code to this install page" width="168" height="168">
+    <p><strong style="color:var(--text)">Share it.</strong> Scan this with another Android phone to open this page. Works from any camera app.</p>
+  </section>
+
+  <footer>
+    <p><a href="https://github.com/MeanderX/opencode-android">Source &amp; documentation</a> · <a href="https://opencode.ai">OpenCode</a><br>
+    Needs ~2 GB free storage. Uninstall: <code>proot-distro remove debian</code>, then delete <code>~/opencode-android</code>.</p>
+  </footer>
+</main>
+<div class="toast" id="toast">Copied</div>
+<script>
+  const cmd = document.getElementById('cmd').textContent;
+  const copy = document.getElementById('copy');
+  const toast = document.getElementById('toast');
+  let t;
+  function done() {
+    copy.textContent = 'Copied';
+    toast.classList.add('show');
+    clearTimeout(t);
+    t = setTimeout(() => { toast.classList.remove('show'); copy.textContent = 'Copy command'; }, 1800);
+  }
+  copy.addEventListener('click', async () => {
+    try {
+      await navigator.clipboard.writeText(cmd);
+      done();
+    } catch {
+      const r = document.createRange();
+      r.selectNodeContents(document.getElementById('cmd'));
+      const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+      document.execCommand('copy');
+      done();
+    }
+  });
+</script>
+</body>
+</html>

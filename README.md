@@ -4,6 +4,18 @@ A tiny tool that installs [OpenCode](https://opencode.ai) on your Android
 phone and launches it in the right environment — then puts it one tap away on
 your home screen.
 
+## Scan to install
+
+<p align="center">
+  <a href="https://meanderx.github.io/opencode-android/">
+    <img src="docs/qr.png" width="220" height="220" alt="QR code: open the OpenCode on Android install page">
+  </a><br>
+  <sub><a href="https://meanderx.github.io/opencode-android/">meanderx.github.io/opencode-android</a></sub>
+</p>
+
+Point an Android camera at the code, install Termux from the page, then copy
+the one-line installer into Termux. Same steps as below, minus the typing.
+
 ## Why it needs a Linux environment
 
 OpenCode's installers and npm check `process.platform`, which reports
